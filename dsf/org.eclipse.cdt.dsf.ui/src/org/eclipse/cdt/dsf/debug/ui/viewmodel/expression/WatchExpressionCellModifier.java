@@ -38,6 +38,8 @@ import org.eclipse.jface.viewers.ICellModifier;
 import org.eclipse.jface.viewers.TreePath;
 import org.eclipse.jface.viewers.Viewer;
 import org.eclipse.ui.IWorkbenchPart;
+import org.eclipse.ui.IWorkingSet;
+import org.eclipse.ui.PlatformUI;
 
 /**
  * 
@@ -90,6 +92,17 @@ public class WatchExpressionCellModifier implements ICellModifier {
         } else if (element instanceof NewExpressionVMC && strValue.length() != 0) {
             IWatchExpression watchExpression = expressionManager.newWatchExpression(origStrValue); 
             expressionManager.addExpression(watchExpression);            
+
+            String workingSetName = ((NewExpressionVMC) element).getWorkingSetName();
+            if (workingSetName != null && !(ExpressionWorkingSetVMNode.WORKINGSET_OTHERS.equals(workingSetName)))
+            {
+            	IWorkingSet workingset = PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSet(workingSetName);
+    			IAdaptable[] existingElements = workingset.getElements();
+    			IAdaptable[] newElements = new IAdaptable[existingElements.length + 1];
+    			System.arraycopy(existingElements, 0, newElements, 0, existingElements.length);
+    			newElements[newElements.length - 1] = watchExpression;
+    			workingset.setElements(newElements);
+            }
         }
     }
 

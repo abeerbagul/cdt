@@ -7,6 +7,7 @@
  * 
  * Contributors:
  *     Wind River Systems - initial API and implementation
+ *     Abeer Bagul (Tensilica Inc) - added support for working sets
  *******************************************************************************/
 package org.eclipse.cdt.dsf.debug.ui.viewmodel.expression;
 
@@ -443,4 +444,10 @@ public class ExpressionVMProvider extends AbstractDMVMProvider
         }
         super.update(update);
     }
+
+  	@Override
+  	public List<IVMModelProxy> getActiveModelProxies()
+  	{
+  		return super.getActiveModelProxies();
+  	}
 }

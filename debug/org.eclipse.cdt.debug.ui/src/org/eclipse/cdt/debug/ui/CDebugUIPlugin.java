@@ -27,6 +27,7 @@ import org.eclipse.cdt.debug.internal.ui.EvaluationContextManager;
 import org.eclipse.cdt.debug.internal.ui.IInternalCDebugUIConstants;
 import org.eclipse.cdt.debug.internal.ui.disassembly.dsf.DisassemblyBackendCdiFactory;
 import org.eclipse.cdt.debug.internal.ui.disassembly.editor.DisassemblyEditorManager;
+import org.eclipse.cdt.debug.internal.ui.expression.workingsets.ExpressionViewWorkingSetManager;
 import org.eclipse.cdt.debug.internal.ui.pinclone.ViewIDCounterManager;
 import org.eclipse.cdt.debug.ui.sourcelookup.DefaultSourceLocator;
 import org.eclipse.cdt.debug.ui.sourcelookup.OldDefaultSourceLocator;
@@ -308,6 +309,7 @@ public class CDebugUIPlugin extends AbstractUIPlugin {
 	private void startupInUIThread() {
 		EvaluationContextManager.startup();
 		ViewIDCounterManager.getInstance().init();
+		ExpressionViewWorkingSetManager.getInstance().init();
 		
 		// We contribute actions to the platform's Variables view with a
 		// criteria to enable only when this plugin is loaded. This can lead to

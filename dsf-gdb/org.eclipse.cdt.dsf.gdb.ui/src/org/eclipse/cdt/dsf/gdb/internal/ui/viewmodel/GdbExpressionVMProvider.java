@@ -9,6 +9,7 @@
  *     Freescale Semiconductor - initial API and implementation
  *     Axel Mueller            - Bug 306555 - Add support for cast to type / view as array (IExpressions2)
  *     Jens Elmenthaler (Verigy) - Added Full GDB pretty-printing support (bug 302121)
+ *     Abeer Bagul (Tensilica Inc) - Added support for working sets
  *******************************************************************************/
 package org.eclipse.cdt.dsf.gdb.internal.ui.viewmodel;
 
@@ -20,6 +21,7 @@ import org.eclipse.cdt.dsf.debug.ui.IDsfDebugUIConstants;
 import org.eclipse.cdt.dsf.debug.ui.viewmodel.expression.DisabledExpressionVMNode;
 import org.eclipse.cdt.dsf.debug.ui.viewmodel.expression.ExpressionManagerVMNode;
 import org.eclipse.cdt.dsf.debug.ui.viewmodel.expression.ExpressionVMProvider;
+import org.eclipse.cdt.dsf.debug.ui.viewmodel.expression.ExpressionWorkingSetVMNode;
 import org.eclipse.cdt.dsf.debug.ui.viewmodel.expression.IExpressionVMNode;
 import org.eclipse.cdt.dsf.debug.ui.viewmodel.expression.SingleExpressionVMNode;
 import org.eclipse.cdt.dsf.debug.ui.viewmodel.register.RegisterBitFieldVMNode;
@@ -112,8 +114,19 @@ public class GdbExpressionVMProvider extends ExpressionVMProvider {
         	SingleExpressionVMNode expressionManagerNode = new SingleExpressionVMNode(this);
         	addChildNodes(rootNode, new IVMNode[] { expressionManagerNode });
         } else {
+        	IVMNode parentNode = null;
+    		
+            String[] workingSetNames = (String[]) getPresentationContext().getProperty(ExpressionWorkingSetVMNode.PROP_EXPRESSION_WORKINGSETS);
+            if (workingSetNames != null)
+            {
+            	IVMNode workingSetNode = new ExpressionWorkingSetVMNode(this, workingSetNames);
+            	addChildNodes(rootNode, new IVMNode[] {workingSetNode});
+            	
+            	parentNode = workingSetNode;
+            }
+
             ExpressionManagerVMNode expressionManagerNode = new ExpressionManagerVMNode(this);
-            addChildNodes(rootNode, new IVMNode[] {expressionManagerNode});
+            addChildNodes(parentNode != null ? parentNode : rootNode, new IVMNode[] {expressionManagerNode});
         }
         
         // Disabled expression node intercepts disabled expressions and prevents them from being
@@ -203,6 +216,18 @@ public class GdbExpressionVMProvider extends ExpressionVMProvider {
                 }
             }
         }
+		if (isPresentationContextEvent(event))
+		{
+            PropertyChangeEvent propertyEvent = (PropertyChangeEvent)event;
+            if (ExpressionWorkingSetVMNode.PROP_EXPRESSION_WORKINGSETS.equals(propertyEvent.getProperty()))
+            {
+            	if (propertyEvent.getOldValue() == null || propertyEvent.getNewValue() == null)
+            	{
+                	clearNodes(false);
+                    configureLayout();
+            	}
+            }
+        }
         
 		super.handleEvent(event, rm);
 	}
@@ -234,4 +259,8 @@ public class GdbExpressionVMProvider extends ExpressionVMProvider {
 			});
 		}
 	}
+
+    private boolean isPresentationContextEvent(Object event) {
+        return event instanceof PropertyChangeEvent && ((PropertyChangeEvent)event).getSource() instanceof IPresentationContext;
+    }
 }

@@ -7,9 +7,11 @@
  * 
  * Contributors:
  *     Wind River Systems - initial API and implementation
+ *     Abeer Bagul (Tensilica Inc) - added support for working sets
  *******************************************************************************/
 package org.eclipse.cdt.dsf.debug.ui.viewmodel.expression;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -22,6 +24,7 @@ import org.eclipse.cdt.dsf.ui.viewmodel.AbstractVMContext;
 import org.eclipse.cdt.dsf.ui.viewmodel.AbstractVMNode;
 import org.eclipse.cdt.dsf.ui.viewmodel.IVMNode;
 import org.eclipse.cdt.dsf.ui.viewmodel.VMDelta;
+import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.debug.core.DebugPlugin;
 import org.eclipse.debug.core.IExpressionManager;
 import org.eclipse.debug.core.model.IExpression;
@@ -44,6 +47,8 @@ import org.eclipse.jface.viewers.TreePath;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.ui.IWorkingSet;
+import org.eclipse.ui.PlatformUI;
 
 /**
  * This is the top-level view model node in the expressions view.  Its job is to:
@@ -67,6 +72,7 @@ public class ExpressionManagerVMNode extends AbstractVMNode
      * edit it, he will create a new expression.
      */
     public class NewExpressionVMC extends AbstractVMContext {
+    	private String workingSetName;
         public NewExpressionVMC() {
             super(ExpressionManagerVMNode.this);
         }
@@ -79,13 +85,38 @@ public class ExpressionManagerVMNode extends AbstractVMNode
         
         @Override
         public boolean equals(Object obj) {
-            return obj instanceof NewExpressionVMC;
+      	if (! (obj instanceof NewExpressionVMC))
+      		return false;
+
+      	NewExpressionVMC otherVmc = (NewExpressionVMC) obj;
+      	if (workingSetName == null)
+      	{
+      		if (otherVmc.workingSetName != null)
+      			return false;
+      	}
+      	else
+      	{
+      		if (! workingSetName.equals(otherVmc.workingSetName))
+      			return false;
+      	}
+      	
+          return true;
         }
         
         @Override
         public int hashCode() {
-            return getClass().hashCode();
+        	return getClass().hashCode() +
+            		(workingSetName != null ? workingSetName.hashCode() : 0);
         }
+
+        public String getWorkingSetName() {
+			return workingSetName;
+		}
+
+		public void setWorkingSetName(String workingSetName) {
+			this.workingSetName = workingSetName;
+		}
+
     }
 
     /** Local reference to the global expression manager */ 
@@ -124,7 +155,8 @@ public class ExpressionManagerVMNode extends AbstractVMNode
         // local state data, so we don't bother using a job to perform this 
         // operation.
         for (int i = 0; i < updates.length; i++) {
-            updates[i].setHasChilren(fManager.getExpressions().length != 0);
+        	//there is always a node "Add new expressions"
+        	updates[i].setHasChilren(true);
             updates[i].done();
         }
     }
@@ -134,9 +166,55 @@ public class ExpressionManagerVMNode extends AbstractVMNode
         for (IChildrenCountUpdate update : updates) {
             if (!checkUpdate(update)) continue;
 
-            // We assume that the getExpressions() will just read local state data,
-            // so we don't bother using a job to perform this operation.
-            update.setChildCount(fManager.getExpressions().length + 1);
+            if (update.getElement() instanceof ExpressionWorkingSetVMContext)
+            {
+            	String workingSetName = ((ExpressionWorkingSetVMContext) update.getElement()).getWorkingSetName();
+            	int expressionCount = 0;
+        		
+            	if (ExpressionWorkingSetVMNode.WORKINGSET_OTHERS.equals(workingSetName))
+            	{
+            		//get all expressions which are not grouped into working sets
+            		for (IExpression expr : DebugPlugin.getDefault().getExpressionManager().getExpressions())
+            		{
+            			boolean isInWorkingSet = false;
+            			
+            			workingSetsLoop: for (IWorkingSet exprWorkingSet : PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSets())
+            			{
+            				if (ExpressionWorkingSetVMNode.ID.equals(exprWorkingSet.getId()))
+            				{
+            					for (IAdaptable workingSetExpr : exprWorkingSet.getElements())
+            					{
+            						if (expr.equals(workingSetExpr))
+            						{
+            							isInWorkingSet = true;
+            							break workingSetsLoop;
+            						}
+            					}            				
+            					//end for loop "workingSetExprsLoop"
+            				}
+            			}
+            			//end for loop "workingSetsLoop"
+            			
+            			if (! isInWorkingSet)
+            				expressionCount++;
+            		}
+            		//end for loop "allExprsLoop"
+            	}
+            	else
+            	{
+                	IWorkingSet expressionWorkingSet = PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSet(workingSetName);
+            		IAdaptable[] workingSetExpressions = expressionWorkingSet.getElements();
+            		expressionCount = workingSetExpressions.length;
+            	}
+        		
+        		update.setChildCount(expressionCount + 1);
+            }
+            else
+            {
+	            // We assume that the getExpressions() will just read local state data,
+	            // so we don't bother using a job to perform this operation.
+	            update.setChildCount(fManager.getExpressions().length + 1);
+            }
             update.done();
         }
     }
@@ -149,7 +227,60 @@ public class ExpressionManagerVMNode extends AbstractVMNode
     }
     
     public void doUpdateChildren(final IChildrenUpdate update) {
-        final IExpression[] expressions = fManager.getExpressions();
+    	IExpression[] expressions = null;
+    	
+    	String workingSetName = null;
+    	if (update.getElement() instanceof ExpressionWorkingSetVMContext)
+    	{
+    		List<IExpression> expressionList = new ArrayList<IExpression>();
+
+    		workingSetName = ((ExpressionWorkingSetVMContext) update.getElement()).getWorkingSetName();
+    		if (ExpressionWorkingSetVMNode.WORKINGSET_OTHERS.equals(workingSetName))
+    		{
+        		//get all expressions which are not grouped into working sets
+        		for (IExpression expr : DebugPlugin.getDefault().getExpressionManager().getExpressions())
+        		{
+        			boolean isInWorkingSet = false;
+        			
+        			workingSetsLoop: for (IWorkingSet exprWorkingSet : PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSets())
+        			{
+        				if (ExpressionWorkingSetVMNode.ID.equals(exprWorkingSet.getId()))
+        				{
+        					for (IAdaptable workingSetExpr : exprWorkingSet.getElements())
+        					{
+        						if (expr.equals(workingSetExpr))
+        						{
+        							isInWorkingSet = true;
+        							break workingSetsLoop;
+        						}
+        					}
+        					//end for loop "workingSetExprsLoop"
+        				}
+        			}
+        			//end for loop "workingSetsLoop"
+        			
+        			if (! isInWorkingSet)
+        				expressionList.add(expr);
+        		}
+        		//end for loop "allExprsLoop"
+
+    		}
+    		else
+    		{
+        		IWorkingSet expressionWorkingSet = PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSet(workingSetName);
+        		IAdaptable[] workingSetExpressions = expressionWorkingSet.getElements();
+        		for (int i=0; i<workingSetExpressions.length; i++)
+        		{
+        			expressionList.add((IExpression) workingSetExpressions[i]);
+        		}
+    		}
+    		
+    		expressions = expressionList.toArray(new IExpression[0]);
+    	}
+    	else
+    	{
+    		expressions = fManager.getExpressions();
+    	}
         
         // For each (expression) element in update, find the layout node that can 
         // parse it.  And for each expression that has a corresponding layout node, 
@@ -197,7 +328,9 @@ public class ExpressionManagerVMNode extends AbstractVMNode
             } else {
                 // Last element in the list of expressions is the "add new expression"
                 // dummy entry.
-                update.setChild(new NewExpressionVMC(), i);
+            	NewExpressionVMC addVmc = new NewExpressionVMC();
+            	addVmc.setWorkingSetName(workingSetName);
+                update.setChild(addVmc, i);
             }
         }
 
@@ -263,7 +396,64 @@ public class ExpressionManagerVMNode extends AbstractVMNode
     @Override
 	public void buildDelta(final Object event, final VMDelta parentDelta, final int nodeOffset, final RequestMonitor requestMonitor) {
         if (event instanceof ExpressionsChangedEvent) {
-            buildDeltaForExpressionsChangedEvent((ExpressionsChangedEvent)event, parentDelta, nodeOffset, requestMonitor);
+        	if (parentDelta.getElement() instanceof ExpressionWorkingSetVMContext)
+        	{
+        		boolean isExpressionInWorkingSet = false;
+        		String workingSetName = ((ExpressionWorkingSetVMContext) parentDelta.getElement()).getWorkingSetName();
+        		
+        		if (ExpressionWorkingSetVMNode.WORKINGSET_OTHERS.equals(workingSetName))
+        		{
+            		//get all expressions which are not grouped into working sets
+            		allExprsLoop: for (IExpression expr : ((ExpressionsChangedEvent) event).getExpressions())
+            		{
+            			isExpressionInWorkingSet = true;
+            			
+            			for (IWorkingSet exprWorkingSet : PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSets())
+            			{
+            				if (ExpressionWorkingSetVMNode.ID.equals(exprWorkingSet.getId()))
+            				{
+            					for (IAdaptable workingSetExpr : exprWorkingSet.getElements())
+            					{
+            						if (expr.equals(workingSetExpr))
+            						{
+            							isExpressionInWorkingSet = false;
+            							break allExprsLoop;
+            						}
+            					}            				
+            					//end for loop "workingSetExprsLoop"
+            				}
+            			}
+            			//end for loop "workingSetsLoop"
+            		}
+            		//end for loop "allExprsLoop"
+        		}
+        		else
+        		{
+            		IWorkingSet expressionWorkingSet = PlatformUI.getWorkbench().getWorkingSetManager().getWorkingSet(workingSetName);
+            		IAdaptable[] workingSetExpressions = expressionWorkingSet.getElements();
+            		
+            		for (IExpression changedExpression : ((ExpressionsChangedEvent) event).getExpressions())
+            		{
+            			isExpressionInWorkingSet = false;
+            			
+            			for (IAdaptable workingSetExpr : workingSetExpressions)
+            			{
+            				if (changedExpression.equals(workingSetExpr))
+            				{
+            					isExpressionInWorkingSet = true;
+            					break;
+            				}
+            			}
+            		}
+        		}
+        		
+        		if (isExpressionInWorkingSet)
+        			buildDeltaForExpressionsChangedEvent((ExpressionsChangedEvent)event, parentDelta, nodeOffset, requestMonitor);
+        		else
+        			requestMonitor.done();
+        	}
+        	else 
+        		buildDeltaForExpressionsChangedEvent((ExpressionsChangedEvent)event, parentDelta, nodeOffset, requestMonitor);
         } else {
         
             // For each expression, find its corresponding node and ask that
